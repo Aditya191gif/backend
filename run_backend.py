@@ -1,5 +1,8 @@
+import os
 import uvicorn
 
 if __name__ == "__main__":
-    print("Starting Talent Track AI FastAPI Server on http://127.0.0.1:8000 ...")
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", 8000))
+    print(f"Starting Talent Track AI FastAPI Server on http://{host}:{port} ...")
+    uvicorn.run("app.main:app", host=host, port=port, reload=False)
