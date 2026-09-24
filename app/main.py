@@ -111,6 +111,26 @@ def get_recent_candidates(limit: int = 10):
     return {"status": "success", "count": len(candidates), "data": candidates}
 
 
+@app.post("/api/extract-pdf")
+async def extract_pdf_preview(file: UploadFile = File(...)):
+    """Extracts clean human-readable text preview from uploaded resume PDF using PyMuPDF / pdfplumber."""
+    try:
+        contents = await file.read()
+        extracted_text = PDFResumeParser.extract_text_from_pdf_bytes(contents)
+        parsed_structure = PDFResumeParser.parse_resume_structure(extracted_text)
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "text": extracted_text,
+            "candidate_name": parsed_structure.get("name", "Candidate Profile"),
+            "years_of_experience": parsed_structure.get("years_of_experience", 0.0),
+            "education": parsed_structure.get("education", "B.Tech Computer Science"),
+            "skills": parsed_structure.get("extracted_skills", [])
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF extraction error: {str(e)}")
+
+
 @app.post("/api/analyze")
 async def analyze_candidate_full(
     company_name: str = Form("TalentTrack AI"),

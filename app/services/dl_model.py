@@ -90,8 +90,16 @@ class DeepLearningEmbeddingModel:
                 ]).reshape(1, -1)
 
                 feat_scaled = DL_SCALER.transform(feat_vector)
-                predicted_score = float(DL_MATCHER.predict(feat_scaled)[0])
-                score_clipped = round(float(np.clip(predicted_score, 10.0, 99.0)), 2)
+                raw_pred = float(DL_MATCHER.predict(feat_scaled)[0])
+                
+                # Calibrate neural score with actual contextual token interaction to prevent MLP extrapolation drift
+                if dot_product < 0.05 and jaccard < 0.05:
+                    score_clipped = 18.0
+                else:
+                    normalized = min(1.0, dot_product * 1.5 + jaccard * 0.7)
+                    base_dl = 25.0 + normalized * 68.0
+                    mlp_adj = (raw_pred - 50.0) * 0.15
+                    score_clipped = round(float(np.clip(base_dl + mlp_adj, 20.0, 97.5)), 2)
 
                 return {
                     "dl_similarity_score": score_clipped,
