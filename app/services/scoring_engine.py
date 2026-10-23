@@ -10,15 +10,35 @@ class ScoringEngine:
         
         # 1. Minimum Education
         min_edu = criteria.get("min_education", "B.Tech Computer Science")
-        cand_edu = candidate.get("education", "B.Tech Computer Science")
-        edu_status = "PASS" if "b.tech" in cand_edu.lower() or "master" in cand_edu.lower() or "b.e." in cand_edu.lower() else "WARN"
+        cand_edu = candidate.get("education", "Bachelor Degree")
+        
+        cand_lower = str(cand_edu).lower()
+        min_lower = str(min_edu).lower()
+        
+        # Check degree alignment
+        if ("b.tech" in min_lower or "bachelor" in min_lower or "b.e." in min_lower) and ("b.tech" in cand_lower or "bachelor" in cand_lower or "b.e." in cand_lower):
+            edu_status = "PASS"
+            edu_note = "Technical degree background satisfies role requirements."
+        elif "master" in min_lower and ("master" in cand_lower or "m.tech" in cand_lower or "phd" in cand_lower):
+            edu_status = "PASS"
+            edu_note = "Postgraduate degree requirement met."
+        elif "master" in min_lower and ("bachelor" in cand_lower or "b.tech" in cand_lower):
+            edu_status = "WARN"
+            edu_note = "Candidate holds Bachelor degree; role targets Master degree."
+        elif any(tech in cand_lower for tech in ["computer", "information technology", "technology", "engineering", "cs", "it", "ai", "data"]):
+            edu_status = "PASS"
+            edu_note = "Technical degree background satisfies role requirements."
+        else:
+            edu_status = "WARN"
+            edu_note = "Degree background requires closer review."
+
         results.append({
             "id": "edu",
             "name": "Minimum Education",
             "required": f"Required: {min_edu}",
             "candidate_val": cand_edu,
             "status": edu_status,
-            "note": "Degree level aligns with technical role requirements." if edu_status == "PASS" else "Non-standard degree background."
+            "note": edu_note
         })
         
         # 2. Years of Experience
@@ -26,18 +46,22 @@ class ScoringEngine:
         cand_yoe = float(candidate.get("years_of_experience", 0.0))
         if cand_yoe >= min_yoe:
             exp_status = "PASS"
-        elif cand_yoe >= (min_yoe - 1.0):
+            exp_note = "Sufficient domain experience."
+        elif cand_yoe >= (min_yoe - 1.0) and cand_yoe > 0:
             exp_status = "WARN"
+            exp_note = "Near threshold experience."
         else:
             exp_status = "FAIL"
+            exp_note = "Below required minimum YOE (Fresher / Student)." if cand_yoe == 0 else "Below required minimum YOE."
             
+        cand_exp_val = f"{cand_yoe} years (Fresher/Student)" if cand_yoe == 0 else f"{cand_yoe} years"
         results.append({
             "id": "exp",
             "name": "Years of Experience",
             "required": f"Required: {min_yoe}+ years",
-            "candidate_val": f"{cand_yoe} years",
+            "candidate_val": cand_exp_val,
             "status": exp_status,
-            "note": "Sufficient domain experience." if exp_status == "PASS" else ("Near threshold experience." if exp_status == "WARN" else "Below required minimum YOE.")
+            "note": exp_note
         })
         
         # 3. Core Skills
@@ -68,14 +92,32 @@ class ScoringEngine:
         })
         
         # 5. CGPA / Academic Score
-        cgpa_val = candidate.get("cgpa", 8.4)
+        cgpa_val = candidate.get("cgpa")
+        cgpa_display = candidate.get("cgpa_display")
+        min_cgpa = 7.0
+        if "min_cgpa" in criteria:
+            try:
+                min_cgpa = float(criteria["min_cgpa"])
+            except Exception:
+                min_cgpa = 7.0
+                
+        if cgpa_val is not None:
+            cgpa_num = float(cgpa_val)
+            cand_str = cgpa_display if cgpa_display and cgpa_display != "Not specified" else f"{cgpa_num} CGPA"
+            cgpa_status = "PASS" if cgpa_num >= min_cgpa else "WARN"
+            cgpa_note = f"Academic requirement satisfied (>= {min_cgpa} CGPA)." if cgpa_status == "PASS" else f"Academic score below target threshold (< {min_cgpa} CGPA)."
+        else:
+            cand_str = "Not specified"
+            cgpa_status = "WARN"
+            cgpa_note = "No explicit CGPA / academic percentage detected on resume."
+
         results.append({
             "id": "cgpa",
             "name": "CGPA / Academic Score",
-            "required": "Required: ≥ 7.0 CGPA",
-            "candidate_val": f"{cgpa_val} CGPA",
-            "status": "PASS" if cgpa_val >= 7.0 else "WARN",
-            "note": "Strong academic score threshold met."
+            "required": f"Required: >= {min_cgpa} CGPA",
+            "candidate_val": cand_str,
+            "status": cgpa_status,
+            "note": cgpa_note
         })
         
         # 6. Communication Skills

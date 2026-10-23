@@ -99,14 +99,48 @@ class PDFResumeParser:
             if re.search(pattern, text, re.IGNORECASE):
                 extracted_skills.append(skill)
                 
+        # CGPA / Academic Score Extraction
+        cgpa = None
+        cgpa_display = "Not specified"
+        cgpa_match = re.search(r'(?:cgpa|gpa)\s*[:=\-–]?\s*([0-9]+(?:\.[0-9]+)?)(?:\s*(?:/|\bout of\b)\s*10(?:\.0)?)?', text, re.IGNORECASE)
+        if not cgpa_match:
+            cgpa_match = re.search(r'\b([0-9]\.[0-9]{1,2})\s*(?:cgpa|gpa)\b', text, re.IGNORECASE)
+        if cgpa_match:
+            try:
+                val = float(cgpa_match.group(1))
+                if val <= 4.0 and "/ 4" in text:
+                    val = round(val * 2.5, 2)
+                cgpa = round(val, 2)
+                sem_match = re.search(r'\((?:till|up to)?\s*(\d+[a-z]{0,2}\s*semester)\)', text, re.IGNORECASE)
+                if sem_match:
+                    cgpa_display = f"{cgpa} CGPA ({sem_match.group(1).title()})"
+                else:
+                    cgpa_display = f"{cgpa} CGPA"
+            except Exception:
+                pass
+        else:
+            pct_match = re.search(r'(?:percentage|score|marks|aggregate|class\s*(?:xii|x)?)\s*[:=\-–]?\s*([0-9]{2}(?:\.[0-9]+)?)\s*%', text, re.IGNORECASE)
+            if pct_match:
+                try:
+                    pct_val = float(pct_match.group(1))
+                    cgpa = round(pct_val / 10.0, 2)
+                    cgpa_display = f"{cgpa} CGPA ({pct_val}%)"
+                except Exception:
+                    pass
+
         # Experience Calculation (Explicit Statements + Date Ranges)
         yoe = 0.0
-        exp_matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:years?|yrs?)', text, re.IGNORECASE)
-        if exp_matches:
-            yoe = max([float(m) for m in exp_matches])
+        is_student = bool(re.search(r'\b(semester|pursuing|student|fresher|undergraduate|class\s*xii)\b', text, re.IGNORECASE)) and not bool(re.search(r'\b(years?\s+of\s+(?:hands[- ]on\s+)?experience|\d+\+?\s*yrs?\s+exp)\b', text, re.IGNORECASE))
         
-        # Date range fallback (e.g., 2018 - 2024 or 2020 - Present)
-        if yoe == 0.0:
+        exp_matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:hands[- ]on\s*)?(?:experience|exp)?', text, re.IGNORECASE)
+        if exp_matches:
+            # Filter out academic percentages or scores accidentally caught (e.g. 80, 86)
+            valid_yoes = [float(m) for m in exp_matches if float(m) <= 35.0]
+            if valid_yoes:
+                yoe = max(valid_yoes)
+        
+        # Date range fallback (e.g., 2018 - 2024 or 2020 - Present) only if not student
+        if yoe == 0.0 and not is_student:
             year_matches = re.findall(r'\b(20[0-2][0-9])\b', text)
             if len(year_matches) >= 2:
                 years = [int(y) for y in year_matches]
@@ -118,17 +152,38 @@ class PDFResumeParser:
                 if 0 < calc_yoe <= 25:
                     yoe = float(calc_yoe)
 
-        if yoe == 0.0:
-            yoe = 3.0 # Default benchmark fallback
-
         # Education classification
-        education = "Bachelor Degree (CS/IT)"
-        if re.search(r'\b(phd|doctorate|doctor of philosophy)\b', text, re.IGNORECASE):
-            education = "Ph.D. / Doctorate"
-        elif re.search(r'\b(master|m\.tech|m\.s\.|ms|m\.sc|mba)\b', text, re.IGNORECASE):
-            education = "Master Degree (M.Tech/MS)"
-        elif re.search(r'\b(bachelor|b\.tech|b\.e\.|bs|b\.sc|bca)\b', text, re.IGNORECASE):
-            education = "B.Tech / B.E. in CS/IT"
+        is_phd = bool(re.search(r'\b(phd|doctorate|doctor of philosophy)\b', text, re.IGNORECASE))
+        is_master = bool(re.search(r'\b(master|m\.tech|m\.s\.|ms|m\.sc|mca|mba)\b', text, re.IGNORECASE))
+        is_bachelor = bool(re.search(r'\b(bachelor|b\.tech|b\.e\.|bs|b\.sc|bca)\b', text, re.IGNORECASE))
+
+        major = ""
+        if re.search(r'\b(information technology|it)\b', text, re.IGNORECASE):
+            major = "Information Technology"
+        elif re.search(r'\b(computer science|cse|software engineering)\b', text, re.IGNORECASE):
+            major = "Computer Science"
+        elif re.search(r'\b(artificial intelligence|machine learning|ai\s*&\s*ml)\b', text, re.IGNORECASE):
+            major = "Artificial Intelligence"
+        elif re.search(r'\b(data science|analytics)\b', text, re.IGNORECASE):
+            major = "Data Science"
+        elif re.search(r'\b(electronics|electrical|ece|eee)\b', text, re.IGNORECASE):
+            major = "Electronics & Comm"
+        elif re.search(r'\b(mechanical)\b', text, re.IGNORECASE):
+            major = "Mechanical Engineering"
+
+        # Explicit degree match (e.g. "Bachelor of Technology in Information Technology")
+        deg_match = re.search(r'(Bachelor of Technology in [^\n,\(]+|B\.Tech in [^\n,\(]+|Master of Technology in [^\n,\(]+|Bachelor of Engineering in [^\n,\(]+)', text, re.IGNORECASE)
+        if deg_match:
+            raw_deg = deg_match.group(1).strip()
+            education = re.sub(r'\s*(?:cgpa|gpa|score|percentage|grade).*$', '', raw_deg, flags=re.IGNORECASE).strip()
+        elif is_phd:
+            education = f"Ph.D. in {major}" if major else "Ph.D. / Doctorate"
+        elif is_master:
+            education = f"M.Tech in {major}" if major else "Master Degree (M.Tech/MS)"
+        elif is_bachelor:
+            education = f"B.Tech {major}" if major else "B.Tech Computer Science"
+        else:
+            education = "Bachelor Degree"
 
         # Projects Extraction
         extracted_projects = []
@@ -147,6 +202,8 @@ class PDFResumeParser:
             certs.append("AWS Certified Solutions Architect / Developer")
         if re.search(r'\b(azure|microsoft certified)\b', text, re.IGNORECASE):
             certs.append("Microsoft Azure AI Engineer")
+        if re.search(r'\b(oracle|oracle ai)\b', text, re.IGNORECASE):
+            certs.append("Oracle AI Foundations Associate")
         if re.search(r'\b(tensorflow|pytorch|deep learning|coursera|udemy|spacy)\b', text, re.IGNORECASE):
             certs.append("Deep Learning & NLP Specialist Certification")
         if re.search(r'\b(docker|kubernetes|ckad|cka)\b', text, re.IGNORECASE):
@@ -173,6 +230,8 @@ class PDFResumeParser:
             "extracted_skills": list(dict.fromkeys(extracted_skills)),
             "years_of_experience": round(yoe, 1),
             "education": education,
+            "cgpa": cgpa,
+            "cgpa_display": cgpa_display,
             "projects": extracted_projects,
             "certifications": certs,
             "sections_found": sections_found,

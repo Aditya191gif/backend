@@ -152,7 +152,10 @@ async def analyze_candidate_full(
 
     # 2. Extract Text from PDF or use provided text (PyMuPDF / pdfplumber)
     extracted_text = ""
-    if file and hasattr(file, "filename") and file.filename and file.filename.lower().endswith(".pdf"):
+    # If the user edited or provided text in resume_text (and it is not the raw placeholder note), use it directly
+    if resume_text and resume_text.strip() and not resume_text.strip().startswith("[PDF Document:"):
+        extracted_text = resume_text
+    elif file and hasattr(file, "filename") and file.filename and file.filename.lower().endswith(".pdf"):
         contents = await file.read()
         extracted_text = PDFResumeParser.extract_text_from_pdf_bytes(contents)
     elif resume_text:
